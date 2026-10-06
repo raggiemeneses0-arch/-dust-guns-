@@ -111,11 +111,12 @@ class App {
     }
   }
 
-  startRun(mapId) {
+  startRun(mapId, seed) {
     this.pendingMap = mapId;
     this.game = new Game({
       save: this.save,
       mapId,
+      seed,
       audio: this.audio,
     });
     this.deathAt = 0;

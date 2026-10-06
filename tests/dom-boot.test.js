@@ -11,166 +11,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-
-const here = fileURLToPath(new URL('.', import.meta.url));
-const HTML = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const HTML_IDS = new Set([...HTML.matchAll(/id="([^"]+)"/g)].map((m) => m[1]));
-
-/* ------------------------------------------------------------- shim */
-
-const drawn = [];
-
-function makeContext() {
-  const state = {};
-  return new Proxy(state, {
-    get(target, prop) {
-      if (prop in target) return target[prop];
-      if (prop === 'createRadialGradient' || prop === 'createLinearGradient') {
-        return () => ({ addColorStop() {} });
-      }
-      if (prop === 'measureText') return () => ({ width: 12 });
-      return (...args) => {
-        drawn.push(String(prop));
-        return undefined;
-      };
-    },
-    set(target, prop, value) {
-      target[prop] = value;
-      return true;
-    },
-  });
-}
-
-function makeCanvas() {
-  const ctx = makeContext();
-  const canvas = {
-    tagName: 'CANVAS',
-    width: 0,
-    height: 0,
-    clientWidth: 1440,
-    clientHeight: 900,
-    style: { setProperty() {} },
-    dataset: {},
-    getContext: () => ctx,
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1440, height: 900 }),
-    addEventListener() {},
-    removeEventListener() {},
-  };
-  return canvas;
-}
-
-function makeEl(tag = 'div', id = '') {
-  const el = {
-    tagName: String(tag).toUpperCase(),
-    id,
-    children: [],
-    dataset: {},
-    style: { setProperty() {} },
-    disabled: false,
-    _text: '',
-    _classes: new Set(),
-    _handlers: {},
-    _html: '',
-    addEventListener(type, fn) {
-      (el._handlers[type] ??= []).push(fn);
-    },
-    removeEventListener() {},
-    appendChild(child) {
-      el.children.push(child);
-      return child;
-    },
-    querySelector() {
-      return makeEl('div');
-    },
-    querySelectorAll() {
-      return [];
-    },
-    setAttribute() {},
-    getAttribute: () => null,
-    focus() {},
-    click() {
-      for (const fn of el._handlers.click ?? []) fn({ stopPropagation() {}, preventDefault() {} });
-    },
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1440, height: 900 }),
-    classList: {
-      add: (c) => el._classes.add(c),
-      remove: (c) => el._classes.delete(c),
-      contains: (c) => el._classes.has(c),
-      toggle(c, force) {
-        const on = force === undefined ? !el._classes.has(c) : Boolean(force);
-        if (on) el._classes.add(c);
-        else el._classes.delete(c);
-        return on;
-      },
-    },
-  };
-  el.parentElement = { classList: el.classList };
-  Object.defineProperty(el, 'innerHTML', {
-    get: () => el._html,
-    set: (v) => {
-      el._html = String(v);
-      // a real browser drops the subtree when innerHTML is replaced
-      if (el._html === '') el.children = [];
-    },
-  });
-  Object.defineProperty(el, 'className', {
-    get: () => [...el._classes].join(' '),
-    set: (v) => {
-      el._classes = new Set(String(v).split(/\s+/).filter(Boolean));
-    },
-  });
-  // a real DOM coerces textContent to a string
-  Object.defineProperty(el, 'textContent', {
-    get: () => el._text,
-    set: (v) => {
-      el._text = String(v);
-    },
-  });
-  return el;
-}
-
-function installDom() {
-  const elements = new Map();
-  for (const id of HTML_IDS) {
-    elements.set(id, id === 'game' ? makeCanvas() : makeEl('div', id));
-  }
-  // hud is hidden by markup
-  elements.get('hud')._classes.add('hidden');
-
-  const body = makeEl('body');
-  globalThis.document = {
-    body,
-    activeElement: null,
-    getElementById: (id) => elements.get(id) ?? null,
-    createElement: (tag) => (String(tag).toLowerCase() === 'canvas' ? makeCanvas() : makeEl(tag)),
-    querySelectorAll: () => [],
-    querySelector: () => null,
-    addEventListener() {},
-  };
-
-  globalThis.innerWidth = 1440;
-  globalThis.innerHeight = 900;
-  globalThis.devicePixelRatio = 1;
-  globalThis.addEventListener = () => {};
-  globalThis.removeEventListener = () => {};
-
-  const store = new Map();
-  globalThis.localStorage = {
-    getItem: (k) => (store.has(k) ? store.get(k) : null),
-    setItem: (k, v) => void store.set(k, String(v)),
-    removeItem: (k) => void store.delete(k),
-  };
-
-  // rAF is captured rather than scheduled so tests drive frames explicitly.
-  globalThis.requestAnimationFrame = () => 0;
-
-  return { elements, body };
-}
+import { installDom, HTML_IDS, drawn } from './helpers/dom-shim.js';
+import { hasLineOfSight } from '../src/game/ballistics.js';
 
 const dom = installDom();
 
+/** Fixed seed so the layout -- and therefore the assertions -- are stable. */
+const SEED = 'dom-boot-fixed-seed';
+
 /* --------------------------------------------------------- the real app */
+
 
 const mainModule = await import('../src/main.js');
 const app = globalThis.DUST_AND_GUNS;
@@ -242,8 +92,9 @@ test('the help screen lists every control binding', () => {
 });
 
 test('starting a run builds the world and shows the HUD', () => {
-  app.startRun('main-street');
+  app.startRun('main-street', SEED);
   assert.ok(app.game, 'no game instance');
+  assert.equal(app.game.seed, SEED, 'the seed did not reach the simulation');
   assert.equal(app.mode, 'playing');
   assert.equal(app.game.map.id, 'main-street');
   assert.ok(app.game.obstacles.length > 20);
@@ -278,6 +129,12 @@ test('driving the real frame loop simulates and draws', () => {
     if (target) {
       aimX = target.x;
       aimY = target.y;
+      // a real player repositions instead of firing into cover
+      const clear = hasLineOfSight(g.obstacles, p.x, p.y, target.x, target.y);
+      if (!clear || best > g.gun.range * 0.75) {
+        moveX = (target.x - p.x) / best;
+        moveY = (target.y - p.y) / best;
+      }
     } else if (g.pickups.length) {
       let loot = null;
       let ld = Infinity;
@@ -356,7 +213,7 @@ test('the result screen summarises a finished run', () => {
 
 test('every map renders through the real draw path', () => {
   for (const mapId of ['main-street', 'saloon-alley', 'ghost-town', 'red-canyon', 'rail-yard', 'sunset-mesa']) {
-    app.startRun(mapId);
+    app.startRun(mapId, `${SEED}:${mapId}`);
     drawn.length = 0;
     for (let i = 0; i < 40; i += 1) {
       app.game.player.hp = 1e9;
