@@ -1,0 +1,15 @@
+{
+  "name": "dust-and-guns",
+  "version": "1.0.0",
+  "description": "Dust & Guns - a western top-down browser shooter. Hunt bandits, earn coins, buy guns and skins, fight across six maps.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "serve": "node tools/serve.js",
+    "start": "node tools/serve.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
