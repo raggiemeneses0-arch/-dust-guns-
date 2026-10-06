@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="description" content="Dust &amp; Guns - a western top-down browser shooter. Hunt bandits, earn coins, buy guns and skins, fight across six territories." />
+<meta name="theme-color" content="#1b120c" />
+<title>Dust &amp; Guns — A Western Shooter</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E%F0%9F%A4%A0%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+<div id="app">
+  <canvas id="game" aria-label="Dust and Guns game area"></canvas>
+
+  <!-- ============================== HUD ============================== -->
+  <div id="hud" class="hud hidden" aria-hidden="true">
+    <div class="hud-left">
+      <div class="vitals">
+        <div class="bar hp"><span id="hp-fill"></span><b id="hp-text">100</b></div>
+        <div class="bar stamina"><span id="stamina-fill"></span></div>
+      </div>
+      <div class="weapon">
+        <div class="weapon-name" id="weapon-name">Rusty Peacemaker</div>
+        <div class="ammo"><b id="ammo-mag">6</b><span class="sep">/</span><span id="ammo-reserve">6</span></div>
+        <div class="reload-hint" id="reload-hint">R to reload</div>
+      </div>
+      <div class="loadout" id="loadout"></div>
+    </div>
+
+    <div class="hud-center">
+      <div class="wave-chip"><span class="k">Wave</span><b id="wave-num">1</b><span class="k">/</span><b id="wave-max">8</b></div>
+      <div class="enemies-chip"><span id="enemies-left">0</span> left</div>
+      <div class="announce" id="announce"></div>
+    </div>
+
+    <div class="hud-right">
+      <div class="purse">
+        <div class="coin-count"><i class="ico coin"></i><b id="coins">0</b></div>
+        <div class="bounty-count"><i class="ico star"></i><b id="bounty">0</b></div>
+      </div>
+      <div class="run-stats"><span id="run-kills">0</span> kills &middot; <span id="run-acc">0</span>% acc</div>
+      <button class="ghost-btn tiny" id="hud-shop">Shop <kbd>Tab</kbd></button>
+    </div>
+  </div>
+
+  <!-- ========================== MAIN MENU ========================== -->
+  <section id="screen-menu" class="screen">
+    <div class="menu-wrap">
+      <h1 class="logo">
+        <span class="logo-main">Dust <em>&amp;</em> Guns</span>
+        <span class="logo-sub">A Western Top-Down Shooter</span>
+      </h1>
+
+      <div class="menu-card">
+        <div class="name-row">
+          <label for="player-name">Outlaw name</label>
+          <input id="player-name" maxlength="18" placeholder="Stranger" autocomplete="off" />
+        </div>
+
+        <button class="btn primary big" id="btn-play">Ride Out</button>
+        <div class="btn-row">
+          <button class="btn" id="btn-armoury">Armoury</button>
+          <button class="btn" id="btn-territory">Territory</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost" id="btn-help">Controls</button>
+          <button class="btn ghost danger" id="btn-wipe">Wipe Save</button>
+        </div>
+
+        <div class="purse menu-purse">
+          <div class="coin-count"><i class="ico coin"></i><b id="menu-coins">0</b> coins</div>
+          <div class="bounty-count"><i class="ico star"></i><b id="menu-bounty">0</b> bounty</div>
+        </div>
+
+        <div class="career" id="career"></div>
+      </div>
+      <p class="fineprint">Everything is saved in this browser. No account, no downloads.</p>
+    </div>
+  </section>
+
+  <!-- ========================= MAP SELECT ========================= -->
+  <section id="screen-maps" class="screen hidden">
+    <div class="screen-head">
+      <button class="btn ghost back" data-back>← Back</button>
+      <h2>Pick a Territory</h2>
+      <div class="purse"><span class="coin-count"><i class="ico coin"></i><b class="purse-coins">0</b></span></div>
+    </div>
+    <div class="map-grid" id="map-grid"></div>
+  </section>
+
+  <!-- ============================ SHOP ============================ -->
+  <section id="screen-shop" class="screen hidden">
+    <div class="screen-head">
+      <button class="btn ghost back" id="shop-close">← Close</button>
+      <h2 id="shop-title">The Armoury</h2>
+      <div class="purse">
+        <span class="coin-count"><i class="ico coin"></i><b class="purse-coins">0</b></span>
+        <span class="bounty-count"><i class="ico star"></i><b class="purse-bounty">0</b></span>
+      </div>
+    </div>
+    <nav class="tabs" id="shop-tabs"></nav>
+    <div class="shop-body">
+      <div class="shop-list" id="shop-list"></div>
+      <aside class="shop-side">
+        <h3>Loadout</h3>
+        <div class="loadout big" id="shop-loadout"></div>
+        <div class="gun-detail" id="gun-detail"></div>
+        <h3>Wearing</h3>
+        <div class="wearing" id="shop-wearing"></div>
+      </aside>
+    </div>
+    <div class="toast" id="toast"></div>
+  </section>
+
+  <!-- =========================== PAUSE =========================== -->
+  <section id="screen-pause" class="screen hidden">
+    <div class="dialog">
+      <h2>Holding Your Horses</h2>
+      <button class="btn primary" id="btn-resume">Resume</button>
+      <button class="btn" id="btn-pause-shop">Visit Shop</button>
+      <button class="btn ghost" id="btn-quit">Abandon Run</button>
+    </div>
+  </section>
+
+  <!-- ========================= RUN RESULT ========================= -->
+  <section id="screen-result" class="screen hidden">
+    <div class="dialog wide">
+      <h2 id="result-title">You Bit the Dust</h2>
+      <p class="result-sub" id="result-sub"></p>
+      <div class="result-grid" id="result-grid"></div>
+      <div class="btn-row">
+        <button class="btn primary" id="btn-again">Ride Again</button>
+        <button class="btn" id="btn-result-shop">Spend Your Coin</button>
+        <button class="btn ghost" id="btn-menu">Main Menu</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== HELP =========================== -->
+  <section id="screen-help" class="screen hidden">
+    <div class="dialog wide">
+      <h2>Controls</h2>
+      <div class="controls-grid" id="controls-grid"></div>
+      <div class="tips" id="tips"></div>
+      <button class="btn primary" data-back>Got It</button>
+    </div>
+  </section>
+
+  <div class="scanlines" aria-hidden="true"></div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
